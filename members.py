@@ -1,21 +1,29 @@
-import tj,pickle,sys
+import tj,pickle,sys,os
+
+
 FILE='data.ppme'
+KEY1='6JATGN2YC9PPCSEKB4'     # To encrypt the FILE
+KEY2='H71OV1R8BFAZK240PP'     # To encrypt master_password
+
+
 
 class Members:
     def __init__(self):
         self.name=self.__get_name()
         self.username=self.__get_username()
         self.email=self.__get_email()
-        self.master_password=self.__get_password()  # Hashed form of the password
-        self.data={}    # {website:[password,notes]}
         self.show_master_password='' # For showing password to the user, in a safe form
+        self.master_password_enc=self.__get_password()  # Encrypted form of the password using KEY2
+        self.data={}    # {website:[password,notes]}    this password will be encrypted using the master_password 
         self.__module__='PPM'
 
-
-    def username_in_FILE(self,username):
+    @staticmethod
+    def username_in_FILE(username):
+        tj.decryptFile(FILE, password=KEY1)
         f=open(FILE, 'rb')
         All_Users=pickle.load(f)
         f.close()
+        tj.encryptFile(FILE, password=KEY1)
         print(f'User_in_FILE method-> {All_Users}')
 
         for member in All_Users:
@@ -23,9 +31,51 @@ class Members:
                 return True
         return False
 
+
+    @staticmethod
+    def sendConfirmationEmail(email,username,subject ):
+        code=tj.getRandomString(L=[str(i) for i in range(10)], number=6)
+        tar='images'
+        html_resources=[os.path.join(tar,i) for i in os.listdir(tar)]
+        f=open('template.html')
+        body=f.read()
+        f.close()
+        body=body.format(username=username, confirmation=code)
+        
+        
+        sender='tusharlock10@gmail.com'
+        sender_pass='jjmcnukthkrncsii'
+        reciever=[email]
+        tj.email(sender, sender_pass, reciever, body, subject, email_type='html', html_resources=html_resources)
+
+        isConfirmed=False
+        
+        for i in range(4,0,-1):
+            os.system('cls')
+            if i!=4:print(f'\nYou have {i+1} chances left...')
+            code_user=input('Enter the code: ')
+            if code_user==code:
+                isConfirmed=True
+                break
+            print('The code you entered is incorrect, try again...\n\n')
+
+        return isConfirmed 
+
+
+    
     def __get_email(self):
-        email=input('Enter your email address: ')
-        return email
+        print('\n\tEnter your email address,\n\twe will send a confirmation code\n\tto confirm it...')
+        email=input('\nEnter email address here: ')
+        subject='PICO PASS, email verification code...'
+        isConfirmed=self.sendConfirmationEmail(email,self.username,subject)
+        if isConfirmed:return email
+        else:
+            print('Your email could not be confirmed...')
+            print('Program will now quit')
+            sys.exit()
+
+        
+            
 
     def __get_name(self):
         msg='Enter your name: '
@@ -40,12 +90,13 @@ class Members:
                     run=True
                     msg='Your name should only contain letters: '
 
-            name = "".join([i.capitalize() for i in name])      # To capitalize the first letter of every word of the name
+            name = " ".join([i.capitalize() for i in name])      # To capitalize the first letter of every word of the name
             
         return name
 
     def __get_password(self):
-        msg='Set a master password for your account (your password will not be shown when you type): '
+        global KEY2
+        msg='Set a master password for your account (password will not be shown when you type): '
         run=True
         while run:
             run=False
@@ -67,12 +118,13 @@ class Members:
                 run=True
                 continue
         
-        show_mp = mp[:1]+(len(mp[1:-2])*"*")+mp[-2:]
-        mp=tj.make_hash(mp)
+        show_mp = mp[:1]+(len(mp[1:-1])*"*")+mp[-1:]
+        mpe=tj.encrypt(mp,KEY2)     # master_password is now encrypted here
         self.show_master_password=show_mp
-        print(f'THis-> {self.show_master_password}, This2-> {show_mp}')
         print(f'\nThe password that you have set is: {show_mp}')
-        return mp
+        del show_mp,mp
+        
+        return mpe
 
     def __get_username(self):
         msg='Enter username: '
@@ -100,6 +152,7 @@ class Members:
 
 
     def enter_new_data(self):
+        global KEY2
         website=input('Enter the website: ')
 
         msg='Enter the password for this website: '
@@ -119,31 +172,104 @@ class Members:
 Website: {website}
 Password: {show_password}
 Notes: {notes}\n\n''')
+        mp=tj.decrypt(self.master_password_enc, KEY2)   # Obtain mp from the mpe using KEY2
+        website=tj.encrypt(website, mp)
+        password=tj.encrypt(password,mp)
+        notes=tj.encrypt(notes, mp)
+        del mp
         temp={website:[password, notes]}
+        print(f'encrypted-> {temp}')
         self.data.update(temp)
 
 
     def show_data(self):
+        global KEY2
         master_password_check=tj.pinput(f'Enter the master password for {self.username}: ')
-        master_password_check=tj.make_hash(master_password_check)
-        if master_password_check!=self.master_password:
+        mp=tj.decrypt(self.master_password_enc,KEY2)    # Obtain mp from the mpe using KEY2
+        if master_password_check!=mp:
             print(f'\nWrong password for {self.username}...\n')
+            del mp
             return
-        print('------+------------------+------------------+'+('-'*30)+'+')
-        print(' Sno. |      Website     |     Password     |    Notes                     |')
-        print('------+------------------+------------------+'+('-'*30)+'+')
+        print(f'\n\nName: {self.name}\nUsername: {self.username}\n')
+        print('------+------------------+------------------+'+('-'*60)+'+')
+        print(' Sno. |      Website     |     Password     |                            Notes                           |')
+        print('------+------------------+------------------+'+('-'*60)+'+')
         keys=list(self.data.keys())
         for i in range(len(keys)):
-            key=keys[i]     # key is website
+            key=keys[i]     # key is website's encrypted form
             data=self.data[key]
 
-            website=key
-            password=data[0]
-            notes=data[1]
-            print(' %-5s| %-17s| %-17s| %-29s|' % (i+1, website, password, notes))
-        print('------+------------------+------------------+'+('-'*30)+'+')
-            
+            website=tj.decrypt(key,mp) 
+            password=tj.decrypt(data[0],mp)
+            notes=tj.decrypt(data[1],mp)
+            print(' %-5s| %-17s| %-17s| %-59s|' % (i+1, website, password, notes))
+            del website, password, notes, key
+        print('------+------------------+------------------+'+('-'*60)+'+')
 
+
+    def change_name(self):
+        global KEY2
+        cmp=input('Enter your master password: ')
+        mp=tj.decrypt(self.master_password_enc,KEY2)
+        if cmp!=mp:
+            print('Wrong password...')
+            return
+        del mp
+        self.name=self.__get_name()
+
+
+    def change_password(self, forgot=False):
+        global KEY2
+
+        if not forgot:
+            cmp=input('Enter your current master password: ')
+            mp=tj.decrypt(self.master_password_enc,KEY2)
+            if cmp!=mp:
+                print('Wrong password....')
+                return
+        else:
+            mp=tj.decrypt(self.master_password_enc,KEY2)
+            
+        
+        mpe_new=self.__get_password()
+        self.master_password_enc=mpe_new
+        mp_new=tj.decrypt(mpe_new,KEY2)
+        data_new={}
+        
+        for key in self.data:
+            data=self.data[key]
+            website=tj.decrypt(key, mp)
+            password=tj.decrypt(data[0], mp)
+            notes=tj.decrypt(data[1], mp)
+            
+            website=tj.encrypt(website, mp_new)
+            password=tj.encrypt(password, mp_new)
+            notes=tj.encrypt(notes, mp_new)    
+            temp={website: [password, notes]}
+            
+            data_new.update(temp)
+        self.data=data_new
+        
+        del mp, mp_new, temp
+
+            
+    def change_email(self):
+        cmp=input('Enter the master password: ')
+        if cmp==tj.decrypt(self.master_password_enc, KEY2):
+            self.email=self.__get_email()
+        else:
+            print('Password is incorrect, no change done...')
+
+    def forgot_password(self):
+        subject='PICO PASS, master password forgot confirmation code...'
+        isConfirmed=self.sendConfirmationEmail(self.email, self.email, subject)
+
+        if isConfirmed:
+            self.change_password(forgot=True)
+        else:
+            print("You couldn't confirm your password forgot request...")
+        
+                  
 
     def __str__(self):
         to_print=f'''\n---------------------------------------\n
